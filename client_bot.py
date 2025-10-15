@@ -494,6 +494,11 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
         
         task_id, task_info = pending_task
         await self.handle_forward_action_direct(task_id)
+        # Delete the command message after successful forward
+        try:
+            await event.delete()
+        except Exception:
+            pass
     
     async def handle_download_command(self, event):
         """Handle /download command"""
@@ -518,6 +523,11 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
         
         task_id, task_info = pending_task
         await self.handle_download_action_direct(task_id, event.sender_id)
+        # Delete the command message after successful download
+        try:
+            await event.delete()
+        except Exception:
+            pass
     
     def find_pending_task(self, user_id: int):
         """Find the most recent pending task for a user"""
@@ -630,7 +640,9 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
                 'url': url,
                 'status_msg': status_msg,
                 'stage': 'info',
-                'user_id': event.sender_id
+                'user_id': event.sender_id,
+                'source_chat_id': getattr(event, 'chat_id', None),
+                'source_msg_id': getattr(getattr(event, 'message', None), 'id', getattr(event, 'id', None))
             }
             
             # Don't wait for task completion here
@@ -795,6 +807,23 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
             
             # Clean up
             self.downloader.cleanup_file(file_path)
+
+            # Delete source link message and processing message after success
+            try:
+                task = self.active_tasks.get(task_id)
+                if task:
+                    source_chat_id = task.get('source_chat_id')
+                    source_msg_id = task.get('source_msg_id')
+                    if source_chat_id and source_msg_id:
+                        await self.client.delete_messages(source_chat_id, [source_msg_id])
+                # Delete status/processing message
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
+            finally:
+                if task_id in self.active_tasks:
+                    self.active_tasks.pop(task_id, None)
             
         except asyncio.CancelledError:
             logger.info(f"Upload task {task_id} was cancelled")
@@ -1004,6 +1033,23 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
             
             # Clean up
             self.downloader.cleanup_file(file_path)
+
+            # Delete source link message and processing message after success
+            try:
+                task = self.active_tasks.get(task_id)
+                if task:
+                    source_chat_id = task.get('source_chat_id')
+                    source_msg_id = task.get('source_msg_id')
+                    if source_chat_id and source_msg_id:
+                        await self.client.delete_messages(source_chat_id, [source_msg_id])
+                # Delete status/processing message
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
+            finally:
+                if task_id in self.active_tasks:
+                    self.active_tasks.pop(task_id, None)
             
         except asyncio.CancelledError:
             logger.info(f"User upload task {task_id} was cancelled")
@@ -1075,6 +1121,28 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
 
             await status_msg.edit(f"✅ **Đã gửi xong {total} ảnh!**")
 
+            # Delete source link message and processing message after success
+            try:
+                pending = self.find_pending_task(event.sender_id)
+                if pending:
+                    t_id, t_info = pending
+                    source_chat_id = t_info.get('source_chat_id')
+                    source_msg_id = t_info.get('source_msg_id')
+                    if source_chat_id and source_msg_id:
+                        await self.client.delete_messages(source_chat_id, [source_msg_id])
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
+                # Delete the command message
+                try:
+                    await event.delete()
+                except Exception:
+                    pass
+            finally:
+                if task_id in self.active_tasks:
+                    self.active_tasks.pop(task_id, None)
+
         except asyncio.CancelledError:
             if 'image_paths' in locals() and image_paths:
                 self.downloader.cleanup_files(image_paths)
@@ -1144,6 +1212,28 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
                 )
 
             await status_msg.edit(f"✅ **Đã gửi xong {total} ảnh vào nhóm!**")
+
+            # Delete source link message and processing message after success
+            try:
+                pending = self.find_pending_task(event.sender_id)
+                if pending:
+                    t_id, t_info = pending
+                    source_chat_id = t_info.get('source_chat_id')
+                    source_msg_id = t_info.get('source_msg_id')
+                    if source_chat_id and source_msg_id:
+                        await self.client.delete_messages(source_chat_id, [source_msg_id])
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
+                # Delete the command message
+                try:
+                    await event.delete()
+                except Exception:
+                    pass
+            finally:
+                if task_id in self.active_tasks:
+                    self.active_tasks.pop(task_id, None)
 
         except asyncio.CancelledError:
             if 'image_paths' in locals() and image_paths:
