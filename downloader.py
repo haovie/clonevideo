@@ -324,8 +324,6 @@ class VideoDownloader:
             ],
         }
         
-        # Browser options for cookies (to fix 403 errors)
-        self.browsers = ['chrome', 'firefox', 'edge', 'safari']
     
     def _is_subpath(self, path: str, base: str) -> bool:
         """Return True if path is inside base directory."""
@@ -387,15 +385,7 @@ class VideoDownloader:
             enhanced_path = self.audio_enhancer.enhance_video_audio(file_path)
             return enhanced_path if enhanced_path else file_path
         
-        # Method 2: Browser cookies (disabled per user request)
-        # logger.info("Standard download failed, trying browser cookies...")
-        # file_path = self._try_browser_cookies(url, temp_dir)
-        # if file_path:
-        #     # Enhance audio quality
-        #     enhanced_path = self.audio_enhancer.enhance_video_audio(file_path)
-        #     return enhanced_path if enhanced_path else file_path
-        
-        logger.error("All download methods failed")
+        logger.error("Download failed")
         return None
     
     def _is_tiktok_photo_url(self, url: str) -> bool:
@@ -491,45 +481,6 @@ class VideoDownloader:
             logger.warning(f"Standard download failed: {e}")
             return None
     
-    def _try_browser_cookies(self, url: str, temp_dir: str) -> Optional[str]:
-        """Try download with browser cookies and TikTok URL resolution"""
-        # Resolve TikTok short URLs first
-        resolved_url = url
-        if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
-            logger.info(f"Resolving TikTok short URL for browser cookies download: {url}")
-            try:
-                import requests
-                response = requests.head(url, allow_redirects=True, timeout=15)
-                resolved_url = response.url
-                logger.info(f"Resolved TikTok URL for browser cookies: {url} -> {resolved_url}")
-            except Exception as e:
-                logger.warning(f"Could not resolve TikTok short URL for browser cookies {url}: {e}")
-                # Continue with original URL as fallback
-        
-        for browser in self.browsers:
-            try:
-                logger.info(f"Trying {browser} cookies...")
-                
-                opts = self.ydl_opts.copy()
-                opts['outtmpl'] = os.path.join(temp_dir, '%(title)s.%(ext)s')
-                opts['cookiesfrombrowser'] = (browser, None, None, None)
-                # Enhanced settings for TikTok
-                opts['socket_timeout'] = 60
-                opts['retries'] = 2
-                
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    ydl.download([resolved_url])
-                    
-                file_path = self._find_downloaded_file(temp_dir)
-                if file_path:
-                    logger.info(f"Success with {browser} cookies!")
-                    return file_path
-                        
-            except Exception as e:
-                logger.warning(f"{browser} cookies failed: {e}")
-                continue
-        
-        return None
     
     
     
@@ -781,24 +732,17 @@ class VideoDownloader:
             
             # Step 3: Try multiple methods for getting video info
             
-            # Method 1: Standard extraction (no cookies)
+            # Try standard extraction
             info = self._try_standard_info_extraction(url)
             if info:
                 return self._format_video_info(info, original_url)
             
-            # Method 2: Browser cookies (disabled per user request)
-            # if 'tiktok.com' in url:
-            #     logger.info("Standard extraction failed for TikTok, trying with browser cookies...")
-            #     info = self._try_browser_cookies_info_extraction(url)
-            #     if info:
-            #         return self._format_video_info(info, original_url)
-            
-            # Method 3: Fallback - create basic info from URL for TikTok
+            # Fallback for TikTok - create basic info from URL
             if 'tiktok.com' in url:
-                logger.info("All extraction methods failed, creating fallback info for TikTok...")
+                logger.info("Extraction failed, creating fallback info for TikTok...")
                 return self._create_fallback_tiktok_info(original_url)
             
-            logger.error(f"All methods failed to extract video info from: {url}")
+            logger.error(f"Failed to extract video info from: {url}")
             return None
             
         except Exception as e:
@@ -826,31 +770,6 @@ class VideoDownloader:
             logger.warning(f"Standard info extraction failed: {e}")
             return None
     
-    def _try_browser_cookies_info_extraction(self, url: str) -> Optional[dict]:
-        """Try info extraction with browser cookies for TikTok"""
-        for browser in self.browsers:
-            try:
-                logger.info(f"Trying info extraction with {browser} cookies...")
-                
-                info_opts = {
-                    'quiet': True,
-                    'format': 'bestvideo[filesize<2G]+bestaudio[ext=m4a]/bestvideo[filesize<2G]+bestaudio/best[filesize<2G]/best',
-                    'cookiesfrombrowser': (browser, None, None, None),
-                    'socket_timeout': 30,
-                    'retries': 1
-                }
-                
-                with yt_dlp.YoutubeDL(info_opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    if info:
-                        logger.info(f"Success with {browser} cookies for info extraction!")
-                        return info
-                        
-            except Exception as e:
-                logger.warning(f"{browser} cookies info extraction failed: {e}")
-                continue
-        
-        return None
     
     def _create_fallback_tiktok_info(self, url: str) -> dict:
         """Create fallback info for TikTok URLs when extraction fails"""

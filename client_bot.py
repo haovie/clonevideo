@@ -25,7 +25,12 @@ logger = logging.getLogger(__name__)
 
 class TelegramVideoClient:
     def __init__(self):
-        self.client = TelegramClient('video_bot_session', API_ID, API_HASH)
+        # Use session_data folder for session files
+        import os
+        session_dir = 'session_data'
+        os.makedirs(session_dir, exist_ok=True)
+        session_path = os.path.join(session_dir, 'video_bot_session')
+        self.client = TelegramClient(session_path, API_ID, API_HASH)
         self.downloader = VideoDownloader()
         self.active_tasks = {}  # Store active download/upload tasks
         self.task_counter = 0
@@ -35,17 +40,16 @@ class TelegramVideoClient:
         await self.client.start(phone=PHONE_NUMBER)
         logger.info("Client started successfully!")
         
-        # Helper function to wrap event handlers with error handling
+        # Wrap event handlers with error handling
         def safe_handler(handler_func):
             async def wrapped_handler(event):
                 try:
                     await handler_func(event)
                 except Exception as e:
-                    logger.error(f"Error in handler {handler_func.__name__}: {e}")
+                    logger.error(f"Error in {handler_func.__name__}: {e}")
                     try:
-                        await event.respond(f"❌ Đã xảy ra lỗi khi xử lý yêu cầu của bạn. Vui lòng thử lại sau.")
+                        await event.respond("❌ Đã xảy ra lỗi. Vui lòng thử lại.")
                     except Exception:
-                        # If we can't respond, just log it
                         pass
             return wrapped_handler
         
@@ -103,62 +107,50 @@ class TelegramVideoClient:
     
     async def handle_start(self, event):
         """Handle /start command"""
-        # Check if command is from allowed chat
-        if not self.is_allowed_chat(event):
-            return
-        
-        if not self.is_authorized(event.sender_id):
-            # await event.respond("❌ Bạn không có quyền sử dụng lệnh này.")
+        if not self.is_allowed_chat(event) or not self.is_authorized(event.sender_id):
             return
             
-        user_id = event.sender_id
-        logger.info(f"User {user_id} started the bot")
+        logger.info(f"User {event.sender_id} started the bot")
         
         welcome_text = """
-🎬 **Video Download Bot - Enhanced Audio Quality**
+🎬 **Video Download Bot**
 
-✨ **Tính năng xịn xò:**
+✨ **Tính năng:**
 • Hỗ trợ file lên đến 2GB
 • Nhanh và ổn định
 • Hỗ trợ nhiều nền tảng video
-• Hỗ trợ TikTok Photo Slideshows (nghĩa là tạo video từ các hình ảnh trong URL + audio luôn)
-• **Có thể hủy tác vụ**
-• 🎵 **ÂM THANH CHẤT LƯỢNG CAO**: 320kbps, âm lượng đã được tăng cường và cân bằng!
+• TikTok Photo Slideshows (tạo video từ ảnh + audio)
+• Có thể hủy tác vụ
+• 🎵 **Âm thanh chất lượng cao**: 320kbps
 
 **Cách sử dụng:**
 1. Gửi URL video vào chat
 2. Chọn lệnh để lấy video
 
-**Lệnh cơ bản:**
+**Lệnh:**
 • `/get_user_id` - Lấy ID của bạn
-• `/cancel` - Hủy tác vụ đang chạy
+• `/cancel` - Hủy tác vụ
 
 **Nền tảng hỗ trợ:**
-YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
+YouTube, TikTok, Twitter/X, Vimeo, v.v.
         """
         await event.respond(welcome_text)
     
     async def handle_help(self, event):
         """Handle /help command"""
-        # Check if command is from allowed chat
-        if not self.is_allowed_chat(event):
-            return
-        
-        if not self.is_authorized(event.sender_id):
-            # await event.respond("❌ Bạn không có quyền sử dụng lệnh này.")
+        if not self.is_allowed_chat(event) or not self.is_authorized(event.sender_id):
             return
             
-        user_id = event.sender_id
-        is_admin = self.is_admin(user_id)
+        is_admin = self.is_admin(event.sender_id)
         
         help_text = """
 🆘 **Trợ giúp**
 
-**Lệnh cơ bản:**
+**Lệnh:**
 • `/start` - Khởi động bot
 • `/help` - Hiển thị trợ giúp
-• `/cancel` - Hủy tất cả tác vụ đang chạy
-• `/get_user_id` - Lấy ID người dùng của bạn
+• `/cancel` - Hủy tác vụ đang chạy
+• `/get_user_id` - Lấy ID của bạn
 
 **Sử dụng:**
 1. Gửi URL video vào chat
@@ -166,172 +158,127 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
 3. Hỗ trợ file lên đến 2GB
 
 **Ưu điểm:**
-• Không giới hạn 50MB như Bot API
 • Upload nhanh và ổn định
-• Ít lỗi timeout
-• Có thể hủy tác vụ bất kỳ lúc nào
-• **Hỗ trợ TikTok Photo Slideshows (Nghĩa là tạo video từ các hình ảnh trong URL + audio luôn)**
-• 🎵 **ÂM THANH NÂNG CAP**: 320kbps bitrate, âm lượng +250%, EQ tối ưu, loại bỏ nhiễu
+• Có thể hủy tác vụ
+• Hỗ trợ TikTok Photo Slideshows
+• 🎵 Âm thanh chất lượng cao: 320kbps
         """
         
         if is_admin:
             help_text += """
 
-👑 **Lệnh quản trị (chỉ admin):**
-• `/add_user <user_id>` - Thêm user được phép sử dụng bot
-• `/remove_user <user_id>` - Xóa user khỏi danh sách
-• `/list_users` - Xem danh sách users được phép
+👑 **Lệnh admin:**
+• `/add_user <user_id>` - Thêm user
+• `/remove_user <user_id>` - Xóa user
+• `/list_users` - Xem danh sách users
             """
         await event.respond(help_text)
     
     async def handle_get_user_id(self, event):
         """Handle /get_user_id command"""
-        # Check if command is from allowed chat
         if not self.is_allowed_chat(event):
             return
         
-            
         user_id = event.sender_id
-        username = event.sender.username if hasattr(event.sender, 'username') and event.sender.username else "Không có username"
-        first_name = event.sender.first_name if hasattr(event.sender, 'first_name') and event.sender.first_name else "Không có tên"
+        username = event.sender.username if hasattr(event.sender, 'username') and event.sender.username else "N/A"
+        first_name = event.sender.first_name if hasattr(event.sender, 'first_name') and event.sender.first_name else "N/A"
         
         user_info = f"""
-🆔 **Thông tin người dùng:**
+🆔 **Thông tin:**
 
 👤 **User ID:** `{user_id}`
 📛 **Username:** @{username}
 👋 **Tên:** {first_name}
         """
-        
         await event.respond(user_info)
     
     async def handle_add_user(self, event):
         """Handle /add_user command"""
-        # Check if command is from allowed chat
-        if not self.is_allowed_chat(event):
-            return
-        
-        # Only admin can add users
-        if not self.is_admin(event.sender_id):
-            await event.respond("❌ Chỉ admin mới có thể thêm user.")
+        if not self.is_allowed_chat(event) or not self.is_admin(event.sender_id):
+            if self.is_allowed_chat(event):
+                await event.respond("❌ Chỉ admin mới có thể thêm user.")
             return
         
         try:
-            # Extract user_id from command
-            command_text = event.message.text.strip()
-            parts = command_text.split()
+            parts = event.message.text.strip().split()
             
             if len(parts) != 2:
-                await event.respond("""
-❌ **Sai cú pháp!**
-
-**Cách sử dụng:**
-`/add_user <user_id>`
-
-**Ví dụ:**
-`/add_user 123456789`
-
-💡 Dùng `/get_user_id` để lấy ID của user.
-                """)
+                await event.respond("❌ **Sai cú pháp!**\n\n`/add_user <user_id>`\n\n💡 Dùng `/get_user_id` để lấy ID.")
                 return
             
             try:
                 user_id_to_add = int(parts[1])
             except ValueError:
-                await event.respond("❌ User ID phải là số nguyên.")
+                await event.respond("❌ User ID phải là số.")
                 return
             
-            # Check if user is already allowed
             if is_user_allowed(user_id_to_add):
                 await event.respond(f"ℹ️ User `{user_id_to_add}` đã có trong danh sách.")
                 return
             
-            # Add user
             if add_allowed_user(user_id_to_add):
-                await event.respond(f"✅ Đã thêm user `{user_id_to_add}` vào danh sách được phép.")
+                await event.respond(f"✅ Đã thêm user `{user_id_to_add}`")
                 logger.info(f"Admin {event.sender_id} added user {user_id_to_add}")
             else:
-                await event.respond("❌ Không thể lưu danh sách user. Vui lòng thử lại.")
+                await event.respond("❌ Không thể lưu. Thử lại.")
                 
         except Exception as e:
-            logger.error(f"Error in add_user command: {e}")
-            await event.respond(f"❌ Lỗi khi thêm user: {str(e)}")
+            logger.error(f"Error in add_user: {e}")
+            await event.respond(f"❌ Lỗi: {str(e)}")
     
     async def handle_remove_user(self, event):
         """Handle /remove_user command"""
-        # Check if command is from allowed chat
-        if not self.is_allowed_chat(event):
-            return
-        
-        # Only admin can remove users
-        if not self.is_admin(event.sender_id):
-            await event.respond("❌ Chỉ admin mới có thể xóa user.")
+        if not self.is_allowed_chat(event) or not self.is_admin(event.sender_id):
+            if self.is_allowed_chat(event):
+                await event.respond("❌ Chỉ admin mới có thể xóa user.")
             return
         
         try:
-            # Extract user_id from command
-            command_text = event.message.text.strip()
-            parts = command_text.split()
+            parts = event.message.text.strip().split()
             
             if len(parts) != 2:
-                await event.respond("""
-❌ **Sai cú pháp!**
-
-**Cách sử dụng:**
-`/remove_user <user_id>`
-
-**Ví dụ:**
-`/remove_user 123456789`
-                """)
+                await event.respond("❌ **Sai cú pháp!**\n\n`/remove_user <user_id>`")
                 return
             
             try:
                 user_id_to_remove = int(parts[1])
             except ValueError:
-                await event.respond("❌ User ID phải là số nguyên.")
+                await event.respond("❌ User ID phải là số.")
                 return
             
-            # Check if trying to remove admin
             if user_id_to_remove == ADMIN_USER_ID:
-                await event.respond("❌ Không thể xóa admin khỏi danh sách.")
+                await event.respond("❌ Không thể xóa admin.")
                 return
             
-            # Check if user exists in file-based list
             file_users = load_allowed_users()
             if user_id_to_remove not in file_users:
-                await event.respond(f"ℹ️ User `{user_id_to_remove}` không có trong danh sách file (có thể trong env).")
+                await event.respond(f"ℹ️ User `{user_id_to_remove}` không có trong danh sách.")
                 return
             
-            # Remove user
             if remove_allowed_user(user_id_to_remove):
-                await event.respond(f"✅ Đã xóa user `{user_id_to_remove}` khỏi danh sách.")
+                await event.respond(f"✅ Đã xóa user `{user_id_to_remove}`")
                 logger.info(f"Admin {event.sender_id} removed user {user_id_to_remove}")
             else:
-                await event.respond("❌ Không thể lưu danh sách user. Vui lòng thử lại.")
+                await event.respond("❌ Không thể lưu. Thử lại.")
                 
         except Exception as e:
-            logger.error(f"Error in remove_user command: {e}")
-            await event.respond(f"❌ Lỗi khi xóa user: {str(e)}")
+            logger.error(f"Error in remove_user: {e}")
+            await event.respond(f"❌ Lỗi: {str(e)}")
     
     async def handle_list_users(self, event):
         """Handle /list_users command"""
-        # Check if command is from allowed chat
-        if not self.is_allowed_chat(event):
-            return
-        
-        # Only admin can list users
-        if not self.is_admin(event.sender_id):
-            await event.respond("❌ Chỉ admin mới có thể xem danh sách user.")
+        if not self.is_allowed_chat(event) or not self.is_admin(event.sender_id):
+            if self.is_allowed_chat(event):
+                await event.respond("❌ Chỉ admin mới có thể xem danh sách.")
             return
         
         try:
             all_users = get_all_allowed_users()
             
             if not all_users:
-                await event.respond("📝 **Danh sách users:**\n\nℹ️ Chưa có user nào được phép sử dụng.")
+                await event.respond("📝 **Danh sách users:**\n\nℹ️ Chưa có user nào.")
                 return
             
-            # Separate users by source
             from config import ALLOWED_USERS_STR
             file_users = load_allowed_users()
             env_users = set()
@@ -342,34 +289,31 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
                 elif hasattr(ALLOWED_USERS_STR, '__iter__'):
                     env_users.update(ALLOWED_USERS_STR)
             
-            response = "📝 **Danh sách users được phép:**\n\n"
+            response = "📝 **Danh sách users:**\n\n"
             
-            # Admin
             if ADMIN_USER_ID:
                 response += f"👑 **Admin:** `{ADMIN_USER_ID}`\n\n"
             
-            # Environment users
             if env_users:
-                response += "🔧 **Từ Environment (.env):**\n"
+                response += "🔧 **Từ .env:**\n"
                 for user_id in sorted(env_users):
-                    if user_id != ADMIN_USER_ID:  # Don't duplicate admin
+                    if user_id != ADMIN_USER_ID:
                         response += f"• `{user_id}`\n"
                 response += "\n"
             
-            # File users
             if file_users:
-                response += "📁 **Từ File (có thể quản lý):**\n"
+                response += "📁 **Từ File:**\n"
                 for user_id in sorted(file_users):
-                    if user_id != ADMIN_USER_ID and user_id not in env_users:  # Don't duplicate
+                    if user_id != ADMIN_USER_ID and user_id not in env_users:
                         response += f"• `{user_id}`\n"
             
-            response += f"\n📊 **Tổng cộng:** {len(all_users)} users"
+            response += f"\n📊 **Tổng:** {len(all_users)} users"
             
             await event.respond(response)
             
         except Exception as e:
-            logger.error(f"Error in list_users command: {e}")
-            await event.respond(f"❌ Lỗi khi lấy danh sách user: {str(e)}")
+            logger.error(f"Error in list_users: {e}")
+            await event.respond(f"❌ Lỗi: {str(e)}")
     
     async def handle_message(self, event):
         """Handle incoming messages with URLs"""
@@ -434,27 +378,17 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
     
     async def handle_cancel(self, event):
         """Handle /cancel command"""
-        # Check if command is from allowed chat
-        if not self.is_allowed_chat(event):
-            return
-        
-        if not self.is_authorized(event.sender_id):
-            # await event.respond("❌ Bạn không có quyền sử dụng lệnh này.")
+        if not self.is_allowed_chat(event) or not self.is_authorized(event.sender_id):
             return
             
         user_id = event.sender_id
-        
-        # Find and cancel tasks for this user
-        user_tasks = []
-        for task_id, task_info in list(self.active_tasks.items()):
-            if task_info.get('user_id') == user_id:
-                user_tasks.append((task_id, task_info))
+        user_tasks = [(tid, info) for tid, info in list(self.active_tasks.items()) 
+                      if info.get('user_id') == user_id]
         
         if not user_tasks:
-            await event.respond("ℹ️ Bạn không có tác vụ nào đang chạy.")
+            await event.respond("ℹ️ Không có tác vụ nào đang chạy.")
             return
         
-        # Cancel user's tasks
         cancelled_count = 0
         for task_id, task_info in user_tasks:
             try:
@@ -462,39 +396,29 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
                 cancelled_count += 1
                 logger.info(f"Cancelled task {task_id} for user {user_id}")
                 
-                # Update status message
                 await task_info['status_msg'].edit(
-                    f"❌ **Tác vụ đã bị hủy**\n🔗 URL: `{task_info['url']}`"
+                    f"❌ **Đã hủy**\n🔗 `{task_info['url']}`"
                 )
-                
-                # Remove from active tasks
                 del self.active_tasks[task_id]
                 
             except Exception as e:
                 logger.warning(f"Error cancelling task {task_id}: {e}")
         
-        await event.respond(f"✅ Đã hủy {cancelled_count} tác vụ của bạn.")
+        await event.respond(f"✅ Đã hủy {cancelled_count} tác vụ.")
     
     async def handle_forward_command(self, event):
         """Handle /forward command"""
-        # Check if command is from allowed chat
-        if not self.is_allowed_chat(event):
-            return
-
-        if not self.is_authorized(event.sender_id):
-            # await event.respond("❌ Bạn không có quyền sử dụng lệnh này.")
+        if not self.is_allowed_chat(event) or not self.is_authorized(event.sender_id):
             return
             
-        # Find the most recent pending task for this user
         pending_task = self.find_pending_task(event.sender_id)
         
         if not pending_task:
-            await event.respond("ℹ️ Không có video nào đang chờ xử lý. Hãy gửi URL video trước.")
+            await event.respond("ℹ️ Không có video đang chờ. Gửi URL trước.")
             return
         
         task_id, task_info = pending_task
         await self.handle_forward_action_direct(task_id)
-        # Delete the command message after successful forward
         try:
             await event.delete()
         except Exception:
@@ -502,28 +426,17 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
     
     async def handle_download_command(self, event):
         """Handle /download command"""
-        # Check if command is from allowed chat
-        if not self.is_allowed_chat(event):
-            return
-        
-        if not self.is_authorized(event.sender_id):
-            # await event.respond("❌ Bạn không có quyền sử dụng lệnh này.")
+        if not self.is_allowed_chat(event) or not self.is_authorized(event.sender_id):
             return
             
-        # Find the most recent pending task for this user
         pending_task = self.find_pending_task(event.sender_id)
-
-        
         
         if not pending_task:
-            await event.respond("ℹ️ Không có video nào đang chờ xử lý. Hãy gửi URL video trước.")
+            await event.respond("ℹ️ Không có video đang chờ. Gửi URL trước.")
             return
-        
-        
         
         task_id, task_info = pending_task
         await self.handle_download_action_direct(task_id, event.sender_id)
-        # Delete the command message after successful download
         try:
             await event.delete()
         except Exception:
@@ -532,81 +445,31 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
     def find_pending_task(self, user_id: int):
         """Find the most recent pending task for a user"""
         for task_id, task_info in self.active_tasks.items():
-            if (task_info.get('stage') == 'info' and 
-                task_info.get('user_id') == user_id):
+            if task_info.get('stage') == 'info' and task_info.get('user_id') == user_id:
                 return task_id, task_info
         return None
     
     def is_authorized(self, user_id: int) -> bool:
-        """Check if a user is authorized to use restricted commands
-        
-        Args:
-            user_id: The Telegram user ID to check
-            
-        Returns:
-            bool: True if the user is authorized, False otherwise
-        """
+        """Check if user is authorized"""
         return is_user_allowed(user_id)
     
     def is_admin(self, user_id: int) -> bool:
-        """Check if a user is admin (can manage other users)
-        
-        Args:
-            user_id: The Telegram user ID to check
-            
-        Returns:
-            bool: True if the user is admin, False otherwise
-        """
+        """Check if user is admin"""
         return ADMIN_USER_ID and user_id == ADMIN_USER_ID
     
     def is_allowed_chat(self, event) -> bool:
-        """Check if the chat is allowed for bot operations
-        
-        Args:
-            event: The message event
-            
-        Returns:
-            bool: True if chat is allowed, False otherwise
-        """
+        """Check if chat is allowed"""
         chat_id = event.chat_id
         user_id = event.sender_id
-        
-        # Only allow messages from:
-        # 1. Target chat/group (TARGET_CHAT_ID)
-        # 2. Private chat with bot (chat_id == user_id, means it's a private chat)
-        is_target_chat = chat_id == TARGET_CHAT_ID
-        is_private_chat = chat_id == user_id
-        
-        if not (is_target_chat or is_private_chat):
-            return False
-            
-        return True
+        return chat_id == TARGET_CHAT_ID or chat_id == user_id
     
     async def is_topic_accessible(self, event) -> bool:
-        """Check if the current topic/chat is accessible for bot operations
-        
-        Args:
-            event: The message event
-            
-        Returns:
-            bool: True if accessible, False if closed topic or other access issues
-        """
+        """Check if topic/chat is accessible"""
         try:
-            # Try to get basic chat info
-            chat = await event.get_chat()
-            
-            # For forum chats, we might need additional checks
-            if hasattr(chat, 'forum') and chat.forum:
-                # This is a forum - topic might be closed
-                # The actual check will happen when we try to respond
-                pass
-                
+            await event.get_chat()
             return True
         except Exception as e:
-            if "TOPIC_CLOSED" in str(e):
-                return False
-            # For other errors, assume accessible (will be caught later)
-            return True
+            return "TOPIC_CLOSED" not in str(e)
     
     async def process_video_url(self, event, url: str):
         """Process video URL"""

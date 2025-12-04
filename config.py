@@ -5,14 +5,13 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Telegram Client configuration (for client_bot.py)
+# Telegram Client configuration
 API_ID = os.getenv('API_ID')
 API_HASH = os.getenv('API_HASH')
 PHONE_NUMBER = os.getenv('PHONE_NUMBER')
 TARGET_CHAT_ID = os.getenv('TARGET_CHAT_ID')
 
-# Telegram Bot configuration (for bot.py)
-BOT_TOKEN = os.getenv('BOT_TOKEN')
+# User management
 ALLOWED_USERS_STR = os.getenv('ALLOWED_USERS_STR')
 if ALLOWED_USERS_STR and ALLOWED_USERS_STR.isdigit():
     ALLOWED_USERS_STR = int(ALLOWED_USERS_STR)
@@ -28,30 +27,23 @@ if ADMIN_USER_ID and ADMIN_USER_ID.isdigit():
 # Common configuration
 DOWNLOAD_DIR = os.getenv('DOWNLOAD_DIR', './downloads')
 
-# Validate required environment variables for client_bot.py
+# Validate required environment variables
 if not API_ID:
-    print("Warning: API_ID is not set. Required for client_bot.py")
-
+    print("Error: API_ID is required. Get it from https://my.telegram.org/apps")
+    
 if not API_HASH:
-    print("Warning: API_HASH is not set. Required for client_bot.py")
-
+    print("Error: API_HASH is required. Get it from https://my.telegram.org/apps")
+    
 if not PHONE_NUMBER:
-    print("Warning: PHONE_NUMBER is not set. Required for client_bot.py")
-
+    print("Error: PHONE_NUMBER is required (e.g., +84123456789)")
+    
 if not TARGET_CHAT_ID:
-    print("Warning: TARGET_CHAT_ID is not set. Required for client_bot.py")
+    print("Error: TARGET_CHAT_ID is required (chat ID or @username)")
 
-# Validate required environment variables for bot.py
-if not BOT_TOKEN:
-    print("Warning: BOT_TOKEN is not set. Required for bot.py")
-
-# Validate user management
+# User authorization info
 if not ADMIN_USER_ID and not ALLOWED_USERS_STR:
-    print("Warning: No ADMIN_USER_ID or ALLOWED_USERS_STR set. No one will be able to use the bot.")
-    print("Set ADMIN_USER_ID in .env to enable user management features.")
-
-if not ADMIN_USER_ID:
-    print("Info: ADMIN_USER_ID not set. User management commands will be disabled.")
+    print("Warning: No ADMIN_USER_ID or ALLOWED_USERS_STR set.")
+    print("Set ADMIN_USER_ID to enable user management features.")
 
 # Convert API_ID to int if it exists
 if API_ID:
@@ -70,4 +62,4 @@ if TARGET_CHAT_ID:
 
 # Download settings
 MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2GB limit for Telegram Client
-DOWNLOAD_TIMEOUT = 1800  # 30 minutes timeout
+DOWNLOAD_TIMEOUT = 1800  # 30 minutes

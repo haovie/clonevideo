@@ -68,4 +68,7 @@ Thumbs.db
 # Bot specific
 downloads/
 *.log
+*.session
+*.session-journal
 tmp_*
+.env

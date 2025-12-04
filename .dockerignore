@@ -1,0 +1,45 @@
+# Directories
+web-app/
+env-download-bot/
+downloads/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+
+# Files
+.env
+*.log
+*.session
+*.session-journal
+video_bot_session.session
+video_bot_session.session-journal
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+AUDIO_ENHANCEMENT.md
+CONFIGURATION.md
+QUICK_GUIDE.md
+TIKTOK_PHOTOS.md
+README.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Setup files
+setup.py
+.env.example

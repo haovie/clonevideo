@@ -1,0 +1,21 @@
+services:
+  telegram-bot:
+    build: .
+    container_name: telegram-video-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persist session data
+      - ./session_data:/app/session_data
+      # Persist downloads (optional, for debugging)
+      - ./downloads:/app/downloads
+      # Persist allowed users
+      - ./allowed_users.json:/app/allowed_users.json
+    environment:
+      - PYTHONUNBUFFERED=1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
