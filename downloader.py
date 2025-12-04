@@ -387,7 +387,7 @@ class VideoDownloader:
             enhanced_path = self.audio_enhancer.enhance_video_audio(file_path)
             return enhanced_path if enhanced_path else file_path
         
-        # Method 2: Browser cookies (disabled for cleaner experience)
+        # Method 2: Browser cookies (disabled per user request)
         # logger.info("Standard download failed, trying browser cookies...")
         # file_path = self._try_browser_cookies(url, temp_dir)
         # if file_path:
@@ -462,13 +462,29 @@ class VideoDownloader:
             return None
     
     def _try_standard_download(self, url: str, temp_dir: str) -> Optional[str]:
-        """Try standard download"""
+        """Try standard download with enhanced TikTok URL resolution"""
         try:
+            # Resolve TikTok short URLs first
+            resolved_url = url
+            if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
+                logger.info(f"Resolving TikTok short URL for download: {url}")
+                try:
+                    import requests
+                    response = requests.head(url, allow_redirects=True, timeout=15)
+                    resolved_url = response.url
+                    logger.info(f"Resolved TikTok URL for download: {url} -> {resolved_url}")
+                except Exception as e:
+                    logger.warning(f"Could not resolve TikTok short URL for download {url}: {e}")
+                    # Continue with original URL as fallback
+            
             opts = self.ydl_opts.copy()
             opts['outtmpl'] = os.path.join(temp_dir, '%(title)s.%(ext)s')
+            # Add better timeout and retry settings for TikTok
+            opts['socket_timeout'] = 60
+            opts['retries'] = 3
             
             with yt_dlp.YoutubeDL(opts) as ydl:
-                ydl.download([url])
+                ydl.download([resolved_url])
                 return self._find_downloaded_file(temp_dir)
                 
         except Exception as e:
@@ -476,7 +492,20 @@ class VideoDownloader:
             return None
     
     def _try_browser_cookies(self, url: str, temp_dir: str) -> Optional[str]:
-        """Try download with browser cookies"""
+        """Try download with browser cookies and TikTok URL resolution"""
+        # Resolve TikTok short URLs first
+        resolved_url = url
+        if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
+            logger.info(f"Resolving TikTok short URL for browser cookies download: {url}")
+            try:
+                import requests
+                response = requests.head(url, allow_redirects=True, timeout=15)
+                resolved_url = response.url
+                logger.info(f"Resolved TikTok URL for browser cookies: {url} -> {resolved_url}")
+            except Exception as e:
+                logger.warning(f"Could not resolve TikTok short URL for browser cookies {url}: {e}")
+                # Continue with original URL as fallback
+        
         for browser in self.browsers:
             try:
                 logger.info(f"Trying {browser} cookies...")
@@ -484,9 +513,12 @@ class VideoDownloader:
                 opts = self.ydl_opts.copy()
                 opts['outtmpl'] = os.path.join(temp_dir, '%(title)s.%(ext)s')
                 opts['cookiesfrombrowser'] = (browser, None, None, None)
+                # Enhanced settings for TikTok
+                opts['socket_timeout'] = 60
+                opts['retries'] = 2
                 
                 with yt_dlp.YoutubeDL(opts) as ydl:
-                    ydl.download([url])
+                    ydl.download([resolved_url])
                     
                 file_path = self._find_downloaded_file(temp_dir)
                 if file_path:
@@ -724,53 +756,175 @@ class VideoDownloader:
             logger.error(f"Error cleaning up files: {e}")
 
     def get_video_info(self, url: str) -> Optional[dict]:
-        """Get video information with enhanced TikTok photo handling"""
+        """Get video information with enhanced TikTok photo handling and robust error handling"""
+        original_url = url
+        
         try:
-            # Enhanced TikTok photo URL handling
-            original_url = url
+            # Step 1: Resolve TikTok short URLs first
+            if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
+                logger.info(f"Resolving TikTok short URL: {url}")
+                try:
+                    import requests
+                    response = requests.head(url, allow_redirects=True, timeout=15)
+                    resolved_url = response.url
+                    logger.info(f"Resolved TikTok URL: {url} -> {resolved_url}")
+                    url = resolved_url
+                except Exception as e:
+                    logger.warning(f"Could not resolve TikTok short URL {url}: {e}")
+                    # Continue with original URL as fallback
+            
+            # Step 2: Enhanced TikTok photo URL handling
             if self._is_tiktok_photo_url(url):
                 logger.info("Detected TikTok photo URL for info extraction...")
                 # Try to convert to video URL for yt-dlp compatibility
                 url = url.replace('/photo/', '/video/')
             
-            # Use high quality format for info extraction to get accurate filesize
+            # Step 3: Try multiple methods for getting video info
+            
+            # Method 1: Standard extraction (no cookies)
+            info = self._try_standard_info_extraction(url)
+            if info:
+                return self._format_video_info(info, original_url)
+            
+            # Method 2: Browser cookies (disabled per user request)
+            # if 'tiktok.com' in url:
+            #     logger.info("Standard extraction failed for TikTok, trying with browser cookies...")
+            #     info = self._try_browser_cookies_info_extraction(url)
+            #     if info:
+            #         return self._format_video_info(info, original_url)
+            
+            # Method 3: Fallback - create basic info from URL for TikTok
+            if 'tiktok.com' in url:
+                logger.info("All extraction methods failed, creating fallback info for TikTok...")
+                return self._create_fallback_tiktok_info(original_url)
+            
+            logger.error(f"All methods failed to extract video info from: {url}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting video info: {e}")
+            # For TikTok URLs, try to provide fallback info even on error
+            if 'tiktok.com' in original_url:
+                return self._create_fallback_tiktok_info(original_url)
+            return None
+    
+    def _try_standard_info_extraction(self, url: str) -> Optional[dict]:
+        """Try standard yt-dlp info extraction without cookies"""
+        try:
             info_opts = {
                 'quiet': True,
-                'format': 'bestvideo[filesize<2G]+bestaudio[ext=m4a]/bestvideo[filesize<2G]+bestaudio/best[filesize<2G]/best'
+                'format': 'bestvideo[filesize<2G]+bestaudio[ext=m4a]/bestvideo[filesize<2G]+bestaudio/best[filesize<2G]/best',
+                'socket_timeout': 30,
+                'retries': 2
             }
             
             with yt_dlp.YoutubeDL(info_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
+                return info
                 
-                # Enhanced title handling for TikTok photos
-                title = info.get('title', 'Unknown')
-                if self._is_tiktok_photo_url(original_url):
-                    title = f"📸 TikTok Slideshow: {title}"
-                elif 'tiktok.com' in original_url:
-                    title = f"🎵 {title}"
-                
-                # Get filesize from the selected format
-                filesize = 0
-                if 'requested_formats' in info:
-                    # Multiple formats (video + audio)
-                    for fmt in info['requested_formats']:
-                        if fmt.get('filesize'):
-                            filesize += fmt['filesize']
-                elif info.get('filesize'):
-                    # Single format
-                    filesize = info['filesize']
-                
-                # For TikTok photos, estimate slideshow filesize (typically larger due to processing)
-                if self._is_tiktok_photo_url(original_url) and filesize > 0:
-                    filesize = int(filesize * 1.5)  # Estimate 50% larger for slideshow processing
-                
-                return {
-                    'title': title,
-                    'uploader': info.get('uploader', 'Unknown'),
-                    'duration': info.get('duration', 0),
-                    'filesize': filesize,
-                    'description': info.get('description', '')[:200] + '...' if info.get('description') else ''
-                }
         except Exception as e:
-            logger.error(f"Error getting video info: {e}")
+            logger.warning(f"Standard info extraction failed: {e}")
             return None
+    
+    def _try_browser_cookies_info_extraction(self, url: str) -> Optional[dict]:
+        """Try info extraction with browser cookies for TikTok"""
+        for browser in self.browsers:
+            try:
+                logger.info(f"Trying info extraction with {browser} cookies...")
+                
+                info_opts = {
+                    'quiet': True,
+                    'format': 'bestvideo[filesize<2G]+bestaudio[ext=m4a]/bestvideo[filesize<2G]+bestaudio/best[filesize<2G]/best',
+                    'cookiesfrombrowser': (browser, None, None, None),
+                    'socket_timeout': 30,
+                    'retries': 1
+                }
+                
+                with yt_dlp.YoutubeDL(info_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    if info:
+                        logger.info(f"Success with {browser} cookies for info extraction!")
+                        return info
+                        
+            except Exception as e:
+                logger.warning(f"{browser} cookies info extraction failed: {e}")
+                continue
+        
+        return None
+    
+    def _create_fallback_tiktok_info(self, url: str) -> dict:
+        """Create fallback info for TikTok URLs when extraction fails"""
+        try:
+            # Extract basic info from URL
+            username = "Unknown"
+            video_id = "Unknown"
+            
+            if '@' in url and '/video/' in url:
+                try:
+                    username = url.split('@')[1].split('/')[0]
+                    video_id = url.split('/video/')[1].split('?')[0].split('/')[0]
+                except:
+                    pass
+            elif '/photo/' in url:
+                try:
+                    username = url.split('@')[1].split('/')[0] if '@' in url else "Unknown"
+                    video_id = url.split('/photo/')[1].split('?')[0].split('/')[0]
+                except:
+                    pass
+            
+            # Determine if it's a photo slideshow
+            is_photo = self._is_tiktok_photo_url(url)
+            
+            title = f"📸 TikTok Slideshow by @{username}" if is_photo else f"🎵 TikTok Video by @{username}"
+            
+            logger.info(f"Created fallback TikTok info: {title}")
+            
+            return {
+                'title': title,
+                'uploader': f"@{username}",
+                'duration': 15 if is_photo else 30,  # Estimate duration
+                'filesize': 10 * 1024 * 1024,  # Estimate 10MB
+                'description': f"TikTok content from @{username} (ID: {video_id})"
+            }
+            
+        except Exception as e:
+            logger.warning(f"Error creating fallback TikTok info: {e}")
+            return {
+                'title': '🎵 TikTok Video',
+                'uploader': 'TikTok User',
+                'duration': 30,
+                'filesize': 10 * 1024 * 1024,
+                'description': 'TikTok content'
+            }
+    
+    def _format_video_info(self, info: dict, original_url: str) -> dict:
+        """Format video info with enhanced title handling"""
+        # Enhanced title handling for TikTok photos
+        title = info.get('title', 'Unknown')
+        if self._is_tiktok_photo_url(original_url):
+            title = f"📸 TikTok Slideshow: {title}"
+        elif 'tiktok.com' in original_url:
+            title = f"🎵 {title}"
+        
+        # Get filesize from the selected format
+        filesize = 0
+        if 'requested_formats' in info:
+            # Multiple formats (video + audio)
+            for fmt in info['requested_formats']:
+                if fmt.get('filesize'):
+                    filesize += fmt['filesize']
+        elif info.get('filesize'):
+            # Single format
+            filesize = info['filesize']
+        
+        # For TikTok photos, estimate slideshow filesize (typically larger due to processing)
+        if self._is_tiktok_photo_url(original_url) and filesize > 0:
+            filesize = int(filesize * 1.5)  # Estimate 50% larger for slideshow processing
+        
+        return {
+            'title': title,
+            'uploader': info.get('uploader', 'Unknown'),
+            'duration': info.get('duration', 0),
+            'filesize': filesize,
+            'description': info.get('description', '')[:200] + '...' if info.get('description') else ''
+        }

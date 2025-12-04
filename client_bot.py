@@ -677,7 +677,34 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
             video_info = self.downloader.get_video_info(url)
             
             if not video_info:
-                await status_msg.edit(f"❌ Không thể lấy thông tin video từ: `{url}`")
+                # Provide more helpful error message based on URL type
+                platform = get_video_platform(url) or "Unknown"
+                
+                if 'tiktok.com' in url:
+                    error_msg = f"""❌ **Không thể lấy thông tin TikTok video**
+🔗 URL: `{url}`
+
+💡 **Có thể thử:**
+• Kiểm tra URL có đúng không (copy từ app TikTok)
+• Video có thể bị riêng tư hoặc bị xóa
+• Thử lại sau vài phút (TikTok có thể chặn tạm thời)
+• Đảm bảo kết nối mạng ổn định
+
+🔄 Bot sẽ tự động thử các phương pháp khác nhau để tải video."""
+                else:
+                    error_msg = f"""❌ **Không thể lấy thông tin video**
+🔗 URL: `{url}`
+🌐 Nền tảng: {platform}
+
+💡 **Nguyên nhân có thể:**
+• Video bị riêng tư hoặc đã bị xóa
+• Giới hạn địa lý
+• Nền tảng chặn tải xuống tự động
+• Lỗi kết nối mạng
+
+🔄 Vui lòng thử lại hoặc kiểm tra URL."""
+                
+                await status_msg.edit(error_msg)
                 # Remove task if video info cannot be retrieved
                 if task_id in self.active_tasks:
                     self.active_tasks.pop(task_id, None)
@@ -764,8 +791,12 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
                 f"⏳ Vui lòng đợi..."
             )
             
-            # Prepare caption
-            caption = f"🎬 **Video từ:** {url}\n👤 **Tác giả:** {video_info['uploader']} \n"
+            # Prepare caption with length limits
+            truncated_url = self.truncate_url(url, max_length=100)
+            truncated_title = video_info.get('title', 'Unknown')[:80] + '...' if len(video_info.get('title', '')) > 80 else video_info.get('title', 'Unknown')
+            truncated_uploader = video_info.get('uploader', 'Unknown')[:50] + '...' if len(video_info.get('uploader', '')) > 50 else video_info.get('uploader', 'Unknown')
+            
+            caption = f"🎬 **{truncated_title}**\n👤 **Tác giả:** {truncated_uploader}\n🔗 {truncated_url}"
             
             # Get video duration for attributes
             duration = video_info.get('duration', 0)
@@ -992,8 +1023,12 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
             # Get video info for metadata
             video_info = self.downloader.get_video_info(url)
             
-            # Prepare caption
-            caption = f"🎬 **Video đã tải:**\n📹 {video_info['title'][:100]}...\n👤 {video_info['uploader']}\n🔗 {url}"
+            # Prepare caption with length limits
+            truncated_url = self.truncate_url(url, max_length=100)
+            truncated_title = video_info.get('title', 'Unknown')[:80] + '...' if len(video_info.get('title', '')) > 80 else video_info.get('title', 'Unknown')
+            truncated_uploader = video_info.get('uploader', 'Unknown')[:50] + '...' if len(video_info.get('uploader', '')) > 50 else video_info.get('uploader', 'Unknown')
+            
+            caption = f"🎬 **Video đã tải:**\n📹 {truncated_title}\n👤 {truncated_uploader}\n🔗 {truncated_url}"
             
             # Get video dimensions and duration for attributes
             duration = video_info.get('duration', 0)
@@ -1249,6 +1284,36 @@ YouTube, TikTok (bao gồm Photo Slideshows), Twitter/X, Vimeo, v.v.
                 self.downloader.cleanup_files(image_paths)
             if task_id in self.active_tasks:
                 self.active_tasks.pop(task_id, None)
+    
+    def truncate_url(self, url: str, max_length: int = 100) -> str:
+        """Truncate URL to prevent caption length issues"""
+        if len(url) <= max_length:
+            return url
+        
+        # For very long URLs (like Facebook), show domain + ... + end
+        if len(url) > max_length:
+            # Extract domain
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(url)
+                domain = parsed.netloc
+                
+                # If domain itself is too long, just truncate
+                if len(domain) > max_length - 10:
+                    return url[:max_length-3] + "..."
+                
+                # Show domain + ... + last part
+                remaining_length = max_length - len(domain) - 6  # 6 for "..." and spacing
+                if remaining_length > 10:
+                    end_part = url[-remaining_length:]
+                    return f"{domain}...{end_part}"
+                else:
+                    return f"{domain}..."
+            except:
+                # Fallback to simple truncation
+                return url[:max_length-3] + "..."
+        
+        return url
     
     async def get_video_dimensions(self, file_path: str) -> tuple:
         """Get video dimensions using ffprobe"""
